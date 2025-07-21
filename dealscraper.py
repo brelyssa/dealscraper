@@ -1,11 +1,9 @@
-import sys
 import configparser
 import dataclasses
 from argparse import ArgumentParser
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.common.proxy import Proxy, ProxyType
 import time
 from random import choice
 import requests
@@ -13,7 +11,7 @@ import bs4
 import asyncio
 import re
 from email.message import EmailMessage
-from typing import Collection, List, Tuple, Union
+from typing import Tuple
 import aiosmtplib
 
 driver = webdriver.Firefox()
@@ -60,9 +58,9 @@ def get_config():
         scraper_config.email_sms.carrier = config.get('Email SMS Settings', 'PhoneCarrier', fallback='verizon')
         scraper_config.email_sms.num = config.get('Email SMS Settings', 'PhoneNumber')
         scraper_config.email_sms.email = config.get('Email SMS Settings', 'EmailAddress')
-        scraper_config.email_sms.email = config.get('Email SMS Settings', 'Password')
-        scraper_config.email_sms.email = config.get('Email SMS Settings', 'Message', fallback='start bidding now!')
-        scraper_config.email_sms.email = config.get('Email SMS Settings', 'Subject', fallback='ALERT')
+        scraper_config.email_sms.pword = config.get('Email SMS Settings', 'Password')
+        scraper_config.email_sms.msg = config.get('Email SMS Settings', 'Message', fallback='start bidding now!')
+        scraper_config.email_sms.subj = config.get('Email SMS Settings', 'Subject', fallback='ALERT')
 
     if config.has_section('Product Settings'):
         scraper_config.product.productId = config.get('Product Settings', 'ProductId')
@@ -71,7 +69,7 @@ def get_config():
     return scraper_config
 
 async def send_txt(cur_bid: str, config: EmailSMSConfig) -> Tuple[dict, str]:
-    num = str(num)
+    num = str(config.num)
     to_email = CARRIER_MAP[config.carrier]
 
     # build message
@@ -141,15 +139,14 @@ firefox_options.add_argument(f"--proxy-server={proxy}")
 
 def main():
     scraper_config = get_config()
+    time_to_bid = False
 
     driver.get(f"https://www.dealdash.com/auction/{scraper_config.product.productId}") # Open a web page
     while(True):
         
         time.sleep(10) # Allow the page to load
 
-        currentBid = driver.find_elements(By.CLASS_NAME, "css-146c3p1.r-gfo7p.r-jwli3a.r-1ra0lkn.r-vw2c0b")
-        print("Current bid price: "+currentBid[0].text)
-        
+        currentBid = driver.find_elements(By.CLASS_NAME, "css-146c3p1.r-gfo7p.r-jwli3a.r-1ra0lkn.r-vw2c0b")        
         users_list = driver.find_elements(By.CLASS_NAME, "css-146c3p1.r-dnmrzs.r-1udh08x.r-1udbk01.r-3s2u2q.r-1iln25a.r-gfo7p.r-m2pi6t.r-1enofrn")
         
         #for user in users_list:
@@ -167,17 +164,21 @@ def main():
         #for distinct_user in distinct_users_list: #getting all recent distinct users
         #    print(distinct_user)
 
-
-        if(len(distinct_users_list)<=2):
+        if(len(distinct_users_list)<=2 and time_to_bid == False):
             #want to send an alert
-            print("<=2 users left. Attempting to send an SMS alert...")
+            time_to_bid = True
+            print("Current bid price: "+currentBid[0].text+". <=2 users left. Attempting to send an SMS alert...")
             coro = send_txt(currentBid[0].text, scraper_config.email_sms)
             asyncio.run(coro)
-        elif (len(distinct_users_list)==3):
-            print("3 users bidding. Close to bidding time!")
+        elif(len(distinct_users_list)<=2 and time_to_bid == True):
+            #already sent an alert, do not send another
+            print("Current bid price: "+currentBid[0].text+". <=2 users left. Alert already sent.")
         else:
-            print(str(len(distinct_users_list))+" bidders currently, not time yet.")
-
+            time_to_bid = False
+            if (len(distinct_users_list)==9):
+                print("Current bid price: "+currentBid[0].text+". 9+ current bidders.")
+            else:
+                print("Current bid price: "+currentBid[0].text+". "+str(len(distinct_users_list))+" current bidders.")
     driver.quit() # Close the browser
 
 
