@@ -17,6 +17,11 @@ import aiosmtplib
 driver = webdriver.Firefox()
 prCount = 0
 
+parser = ArgumentParser(description="DealDash Scraper Configuration")
+parser.add_argument("-p", "--productid", help="Product ID for the DealDash auction")
+args = parser.parse_args()
+productId = args.productid
+
 HOST = "smtp.gmail.com"
 CARRIER_MAP = {
     "verizon": "vtext.com",
@@ -34,8 +39,6 @@ class EmailSMSConfig:
     carrier: str = "verizon"
     email: str = ""
     pword: str = ""
-    msg: str = "start bidding now!"
-    subj: str = "ALERT"
 
 @dataclasses.dataclass
 class ProductConfig:
@@ -45,7 +48,7 @@ class ProductConfig:
 @dataclasses.dataclass
 class DealScraperConfig:
     email_sms: EmailSMSConfig = dataclasses.field(default_factory=EmailSMSConfig)
-    product: ProductConfig = dataclasses.field(default_factory=ProductConfig)
+    #product: ProductConfig = dataclasses.field(default_factory=ProductConfig)
 
 
 def get_config():
@@ -59,12 +62,10 @@ def get_config():
         scraper_config.email_sms.num = config.get('Email SMS Settings', 'PhoneNumber')
         scraper_config.email_sms.email = config.get('Email SMS Settings', 'EmailAddress')
         scraper_config.email_sms.pword = config.get('Email SMS Settings', 'Password')
-        scraper_config.email_sms.msg = config.get('Email SMS Settings', 'Message', fallback='start bidding now!')
-        scraper_config.email_sms.subj = config.get('Email SMS Settings', 'Subject', fallback='ALERT')
 
-    if config.has_section('Product Settings'):
-        scraper_config.product.productId = config.get('Product Settings', 'ProductId')
-        scraper_config.product.update_interval = config.getint('ProductSettings', 'Update Interval', fallback=10)
+    #if config.has_section('Product Settings'):
+    #    scraper_config.product.productId = config.get('Product Settings', 'ProductId')
+    #    scraper_config.product.update_interval = config.getint('ProductSettings', 'Update Interval', fallback=10)
 
     return scraper_config
 
@@ -76,8 +77,8 @@ async def send_txt(cur_bid: str, config: EmailSMSConfig) -> Tuple[dict, str]:
     message = EmailMessage()
     message["From"] = config.email
     message["To"] = f"{num}@{to_email}"
-    message["Subject"] = config.subj
-    message.set_content("Current bid price: "+cur_bid +", "+ config.msg)
+    message["Subject"] = "ALERT"
+    message.set_content("Product ID "+productId+" current bid price: "+cur_bid +", <=2 bidders left. Start bidding now!")
 
     #send
     send_kws = dict(username=config.email, password=config.pword, hostname=HOST, port=587, start_tls=True)
@@ -138,10 +139,15 @@ firefox_options.add_argument(f"--proxy-server={proxy}")
 
 
 def main():
+    if not productId:
+        print("No product ID provided. Please provide a product ID using the -p or --productid argument.")
+        return
+    
     scraper_config = get_config()
     time_to_bid = False
 
-    driver.get(f"https://www.dealdash.com/auction/{scraper_config.product.productId}") # Open a web page
+    driver.get(f"https://www.dealdash.com/auction/{productId}") # Open page with arg
+    #driver.get(f"https://www.dealdash.com/auction/{scraper_config.product.productId}") # Open page with product config
     while(True):
         
         time.sleep(10) # Allow the page to load
